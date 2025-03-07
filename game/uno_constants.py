@@ -20,3 +20,16 @@ CARD_ABBREVIATIONS = {
     "tip": "прброс",
     "serve": "подача",
 }
+
+CARD_RULES = {
+    "serve": ["receive", "defence", "motivation", "mistake", "reverse", "unsportsmanlike_conduct", "challenge", "serve"],
+    "receive": ["pass", "dig"],
+    "pass": ["spike", "tip"],
+    "spike": ["block", "defence"],
+    "tip": ["block", "defence"],
+    "dig": ["dump"],
+    "dump": ["pass"],
+    "block": ["mistake"],
+    "mistake": ["motivation"],
+    "motivation": COLOR_ACTION_VALUES,  # После мотивации можно любую цветную
+}

@@ -2,7 +2,7 @@ import random
 from game.uno_card import UnoCard
 from game.uno_player import UnoPlayer
 from game.uno_com_player import UnoComPlayer
-from game.uno_constants import COLORS, SPECIAL, WILD_SPECIAL, COLOR_ACTION_VALUES, WILD_ACTION_VALUES
+from game.uno_constants import COLORS, SPECIAL, WILD_SPECIAL, COLOR_ACTION_VALUES, WILD_ACTION_VALUES, CARD_RULES
 from utils.timer import Timer
 import time
 
@@ -148,24 +148,32 @@ class UnoGame:
         return True
 
     def can_play_card(self, card):
-        if self.top_color == "black" or card.color == "black":
-            return True
-        if card.color == self.top_color or card.value == self.top_value:
-            return True
-        return False
+        top_special = self.top_special_card()  # Берем карту из special-колоды
+        top_discard = self.top_discard_card()  # Берем карту из discard-колоды
+
+        if top_special:  # Если есть карта в special
+            return card.value in CARD_RULES.get(top_special.value, [])
+
+        if top_discard:  # Обычная логика (если special пустая)
+            return (
+                    card.color == top_discard.color or
+                    card.value == top_discard.value
+            )
+
+        return True  # Если игра только начинается, кладем любую карту
 
     def play_card(self, player, card):
         if not self.can_play_card(card):
             return False
+
         player.play_card(card)
-        if player.get_hand_size() == 1:
-            player.set_is_uno(True)
-            self.add_com_uno_called_times(player)
-        self.add_card_move_animation(
-            card, src=f"player_{player.get_id()}", dest="discard"
-        )
-        if card.type == "action":
-            self._handle_action(player, card)
+
+        if card.type == "action" and card.value in CARD_RULES:
+            self.special_pile.append(card)  # Добавляем в special-колоду
+        else:
+            self.discard_pile.append(card)  # Обычная discard-колода
+
+        self.add_card_move_animation(card, src=f"player_{player.get_id()}", dest="discard")
 
         return True
 
@@ -202,7 +210,7 @@ class UnoGame:
     def _start_game(self):
         self._shuffle_deck()
         self._deal_cards()
-        self._set_top_discard_card()
+        self.find_first_server()  # Ищем первого игрока
         self._start_turn(self.players[self.current_player_idx])
 
     def next_turn(self):
@@ -214,6 +222,27 @@ class UnoGame:
             self.draw_card(player)
             self.add_game_event_info("uno_failed", player)
             self.turn_ended = True
+
+    def find_first_server(self):
+        # 1. Ищем "serve" в руках
+        first_player = None
+        for player in self.players:
+            if any(card.value == "serve" for card in player.hand):
+                if not first_player or not player.is_com():
+                    first_player = player  # Игрок всегда приоритетен перед ботом
+
+        # 2. Если нашли — он ходит первым
+        if first_player:
+            self.current_player = first_player
+            return
+
+        # 3. Если не нашли, тянем карты, пока кто-то не вытащит "serve"
+        while not first_player:
+            for player in self.players:
+                drawn_card = self.draw_card(player)
+                if drawn_card and drawn_card.value == "serve":
+                    self.current_player = player
+                    return
 
     def prev_turn(self):
         self.next_player_idx -= self.direction + self.player_number
