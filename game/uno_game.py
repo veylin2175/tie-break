@@ -136,16 +136,17 @@ class UnoGame:
     # region game play functions
 
     def draw_card(self, player, draw_number=1):
-        for i in range(draw_number):
+        for _ in range(draw_number):
             if len(self.deck) == 0:
                 self._recycle_discard_pile()
             if len(self.deck) == 0:
-                return False
+                return None  # Вместо False, чтобы избежать AttributeError
+
             card = self.deck.pop(0)
-            self.add_card_move_animation(
-                card, src="deck", dest=f"player_{player.get_id()}"
-            )
-        return True
+            self.add_card_move_animation(card, src="deck", dest=f"player_{player.get_id()}")
+
+            return card  # Теперь метод возвращает карту
+        return None  # Если вдруг карта не была вытянута
 
     def can_play_card(self, card):
         top_special = self.top_special_card()  # Берем карту из special-колоды
@@ -208,10 +209,33 @@ class UnoGame:
     # region Game Functions
 
     def _start_game(self):
-        self._shuffle_deck()
-        self._deal_cards()
-        self.find_first_server()  # Ищем первого игрока
-        self._start_turn(self.players[self.current_player_idx])
+        first_player = None
+
+        # 1. Раздаём каждому игроку по 6 карт
+        for player in self.players:
+            player.hand = [self.deck.pop(0) for _ in range(6)]
+
+        # 2. Проверяем, есть ли у кого-то "serve" среди начальных карт
+        for player in self.players:
+            if any(card.value == "serve" for card in player.hand):
+                first_player = player
+                break  # Если нашли, устанавливаем первого игрока и выходим
+
+        # 3. Если ни у кого нет "serve", начинаем поочередный добор карт
+        player_idx = 0
+        while not first_player:
+            player = self.players[player_idx]
+            drawn_card = self.draw_card(player)  # Игрок тянет карту
+
+            if drawn_card and drawn_card.value == "serve":
+                first_player = player  # Нашли "serve", устанавливаем первого игрока
+                break  # Выход из цикла
+
+            player_idx = (player_idx + 1) % len(self.players)  # Меняем очередь
+
+        # 4. Устанавливаем первого игрока
+        self.current_player = first_player
+        print(f"Первый ходит: {first_player.name}")
 
     def next_turn(self):
         self.next_player_idx += self.direction + self.player_number
@@ -240,9 +264,13 @@ class UnoGame:
         while not first_player:
             for player in self.players:
                 drawn_card = self.draw_card(player)
-                if drawn_card and drawn_card.value == "serve":
-                    self.current_player = player
-                    return
+
+                if drawn_card:
+                    print(
+                        f"Drawn card attributes: type={drawn_card.type}, color={drawn_card.color}, value={drawn_card.value}")
+                    if drawn_card.value == "serve":
+                        self.current_player = player
+                        return
 
     def prev_turn(self):
         self.next_player_idx -= self.direction + self.player_number
