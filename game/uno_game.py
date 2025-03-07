@@ -202,7 +202,6 @@ class UnoGame:
     def _start_game(self):
         self._shuffle_deck()
         self._deal_cards()
-        self._set_top_discard_card()
         self._start_turn(self.players[self.current_player_idx])
 
     def next_turn(self):
