@@ -45,6 +45,7 @@ class UnoGame:
 
     def _init_game(self):
         self._create_deck()
+        self.print_deck_info()
         UnoPlayer.init(self)
         self._add_players(self.players_info)
 
@@ -52,40 +53,60 @@ class UnoGame:
 
     def _create_deck(self):
         """
-        Creates a deck of cards
+        Создает колоду из 56 карт.
         """
         cards = []
-        # Add color cards
-        for color in COLORS:
-            # Add color action cards
-            for value in COLOR_ACTION_VALUES:
+
+        # Цветные карты (красные, желтые, синие, зеленые)
+        for color in COLORS:  # COLORS = ["red", "yellow", "green", "blue"]
+            # Добавляем цветные карты
+            for value in COLOR_ACTION_VALUES:  # COLOR_ACTION_VALUES = ["receive", "defence", "block", "spike", "dump", "pass", "dig", "tip", "mistake", "reverse", "motivation"]
                 cards.append(UnoCard(type="action", color=color, value=value))
-            # Add wild cards
-            for value in WILD_ACTION_VALUES:
+
+        # Черные карты (универсальные)
+        for value in WILD_ACTION_VALUES:  # WILD_ACTION_VALUES = ["unsportsmanlike_conduct", "serve", "challenge"]
+            if value == "serve":
+                # Добавляем 4 карты "подача"
                 for _ in range(4):
+                    cards.append(UnoCard(type="action", color="black", value=value))
+            else:
+                # Добавляем другие черные карты (например, "видеоповтор" и "неспортивное поведение")
+                for _ in range(4):  # По 4 карты каждого типа
                     cards.append(UnoCard(type="action", color="black", value=value))
 
         self.deck = cards
+
+    def print_deck_info(self):
+        """Выводит информацию о колоде."""
+        print(f"Всего карт в колоде: {len(self.deck)}")
+        serve_count = sum(1 for card in self.deck if card.value == "serve")
+        print(f"Карт 'подача' в колоде: {serve_count}")
 
     def _shuffle_deck(self):
         random.shuffle(self.deck)
 
     def _recycle_discard_pile(self):
-        self.deck = self.discard_pile[:-1]
-        self._shuffle_deck()
-        self.discard_pile = [self.discard_pile[-1]]
+        if len(self.discard_pile) > 0:
+            # Пересоздаем колоду из всех карт сброса, кроме последней
+            self.deck = self.discard_pile[:-1]
+            self._shuffle_deck()  # Перемешиваем колоду
+            # Оставляем последнюю карту в сбросе
+            self.discard_pile = [self.discard_pile[-1]]
+        else:
+            # Если сброс пуст, создаем новую колоду
+            self._create_deck()
+            self._shuffle_deck()
 
     # Deal 7 cards to each player in turns.
     def _deal_cards(self, num_cards=6):
-        for i in range(num_cards):
+        """Раздает по 6 карт каждому игроку."""
+        for _ in range(num_cards):
             for player in self.players:
-                self.add_card_move_animation(
-                    card=self.deck.pop(0),
-                    src="deck",
-                    dest=f"player_{player.get_id()}",
-                    delay=0.1,
-                    duration=0.5,
-                )
+                if len(self.deck) == 0:
+                    self._recycle_discard_pile()  # Перемешиваем сброс, если колода пуста
+                card = self.deck.pop(0)
+                player.add_card(card)  # Добавляем карту в руку игрока
+                print(f"Игрок {player.name} получил карту: {card.value} ({card.color})")
 
     # Add players to the game
     def _add_players(self, players_info):
@@ -136,15 +157,15 @@ class UnoGame:
     # region game play functions
 
     def draw_card(self, player, draw_number=1):
-        for i in range(draw_number):
+        """Игрок берет карту из колоды."""
+        for _ in range(draw_number):
             if len(self.deck) == 0:
-                self._recycle_discard_pile()
+                self._recycle_discard_pile()  # Перемешиваем сброс, если колода пуста
             if len(self.deck) == 0:
                 return False
             card = self.deck.pop(0)
-            self.add_card_move_animation(
-                card, src="deck", dest=f"player_{player.get_id()}"
-            )
+            player.add_card(card)  # Добавляем карту в руку игрока
+            print(f"Игрок {player.name} взял карту: {card.value} ({card.color})")
         return True
 
     def can_play_card(self, card):
@@ -166,6 +187,11 @@ class UnoGame:
         )
         if card.type == "action":
             self._handle_action(player, card)
+
+        # Если карта "подача" сыграна, устанавливаем её как верхнюю карту
+        if card.value == "serve":
+            self.top_color = card.color
+            self.top_value = card.value
 
         return True
 
@@ -201,8 +227,48 @@ class UnoGame:
 
     def _start_game(self):
         self._shuffle_deck()
-        self._deal_cards()
-        self._start_turn(self.players[self.current_player_idx])
+        self._deal_cards()  # Раздаем по 6 карт
+        self._set_first_serve_card()  # Устанавливаем первую карту "подача"
+        self._start_turn(self.players[self.current_player_idx])  # Начинаем игру
+
+    def _set_first_serve_card(self):
+        """Устанавливает первую карту 'подача'."""
+        max_attempts = 100  # Максимальное количество попыток
+        attempts = 0
+        while attempts < max_attempts:
+            print(f"Попытка {attempts + 1}: Поиск карты 'подача'...")
+            # Проверяем, есть ли у кого-то из игроков карта "подача"
+            for player in self.players:
+                print(f"Проверяем игрока {player.name}...")
+                if self._has_serve_card(player):
+                    print(f"Карта 'подача' найдена у игрока {player.name}.")
+                    # Если карта "подача" найдена, устанавливаем её как верхнюю карту
+                    for card in player.hand:
+                        if card.value == "serve":
+                            print(f"Игрок {player.name} играет карту 'подача'.")
+                            self.play_card(player, card)
+                            self.current_player_idx = self.players.index(player)  # Преимущество у этого игрока
+                            return
+            # Если карты "подача" нет, игроки берут по одной карте из колоды
+            for player in self.players:
+                if len(self.deck) == 0:
+                    print("Колода пуста, перемешиваем сброс...")
+                    self._recycle_discard_pile()  # Перемешиваем сброс, если колода пуста
+                    if len(self.deck) == 0:  # Если колода все еще пуста
+                        raise Exception("Колода пуста, карта 'подача' не найдена.")
+                print(f"Игрок {player.name} берет карту из колоды...")
+                self.draw_card(player)
+            attempts += 1
+        # Если карта "подача" не найдена после max_attempts попыток
+        raise Exception("Не удалось найти карту 'подача' после 100 попыток.")
+
+    def _has_serve_card(self, player):
+        """Проверяет, есть ли у игрока карта 'подача'."""
+        for card in player.hand:
+            if card.value == "serve":
+                print(f"Игрок {player.name} имеет карту 'подача'.")
+                return True
+        return False
 
     def next_turn(self):
         self.next_player_idx += self.direction + self.player_number
